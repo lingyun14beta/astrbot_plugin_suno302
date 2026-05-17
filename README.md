@@ -103,3 +103,7 @@ astrbot_plugin_suno302/
 ## License
 
 MIT
+
+---
+
+![Moe Counter](https://count.getloli.com/get/@astrbot_plugin_suno302-lingyun?theme=moebooru)
