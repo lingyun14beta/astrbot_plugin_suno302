@@ -1,0 +1,48 @@
+{
+  "api_key": {
+    "description": "302.AI API Key",
+    "type": "string",
+    "hint": "在 302.AI 控制台（https://302.ai）获取，格式为 sk-xxxxxxxx",
+    "obvious_hint": true,
+    "default": ""
+  },
+  "default_model": {
+    "description": "默认 Suno 模型",
+    "type": "string",
+    "hint": "chirp-fenix=v5.5 / chirp-crow=v5 / chirp-bluejay=v4.5+ / chirp-auk=v4.5 / chirp-v4 / chirp-v3-5",
+    "default": "chirp-crow",
+    "options": [
+      "chirp-fenix",
+      "chirp-crow",
+      "chirp-bluejay",
+      "chirp-auk",
+      "chirp-v4",
+      "chirp-v3-5"
+    ]
+  },
+  "poll_config": {
+    "description": "轮询配置",
+    "type": "object",
+    "hint": "控制等待生成结果的行为",
+    "items": {
+      "max_poll": {
+        "description": "最大轮询次数",
+        "type": "int",
+        "hint": "每次间隔 poll_interval 秒，默认 40 次即最长等待 200 秒",
+        "default": 40
+      },
+      "poll_interval": {
+        "description": "轮询间隔（秒）",
+        "type": "int",
+        "hint": "每次查询任务状态之间的等待秒数，建议 5~10",
+        "default": 5
+      }
+    }
+  },
+  "enable_llm_tool": {
+    "description": "启用 LLM 工具",
+    "type": "bool",
+    "hint": "开启后 LLM 可自动调用 Suno 生成音乐，无需用户手动输入指令",
+    "default": false
+  }
+}
