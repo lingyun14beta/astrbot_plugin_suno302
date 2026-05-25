@@ -1,5 +1,5 @@
 name: astrbot_plugin_suno302
 desc: 通过 302.AI 的 Suno API 生成 AI 音乐，支持文本描述生成歌曲、自定义模式（歌词+风格）等功能。
 author: lingyun
-version: 1.0.0
+version: 1.1.0
 repo: "https://github.com/lingyun14beta/astrbot_plugin_suno302"
