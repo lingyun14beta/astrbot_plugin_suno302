@@ -8,6 +8,10 @@ AstrBot Plugin: Suno AI Music via 302.AI
   /suno custom <标题> <风格> [男/女]  自定义模式第一步（标题和风格不能含空格）
   /suno lyrics <歌词>               自定义模式第二步，一次性发完歌词
   /suno status <task_id>            查询任务
+
+LLM 工具（可在配置中开关）：
+  由 llm_tools.register() 在 __init__ 中按需注册。
+  enable_llm_tool=False 时工具完全不可见，不影响 LLM 行为。
 """
 
 from astrbot.api import logger
@@ -34,11 +38,32 @@ class Main(Star):
     def __init__(self, context: Context, config=None) -> None:
         super().__init__(context)
         config_mgr.init(config)
+        self._register_llm_tool(context)
+
+    def _register_llm_tool(self, context: Context) -> None:
+        """
+        按需注册 LLM 工具。
+
+        在 __init__（运行时）注册，而非在模块导入时（装饰器）注册，
+        使 enable_llm_tool=False 时工具对 LLM 完全不可见。
+        """
+        if not config_mgr.enable_llm_tool():
+            logger.debug("[suno302] enable_llm_tool=False，跳过 LLM 工具注册")
+            return
+
+        from . import llm_tools  # 按需导入
+        llm_tools.register(context)
 
     # ── 内部：提交 → 轮询 → yield 结果 ──────────────────────────────────────
 
-    async def _generate(self, event: AstrMessageEvent, payload: dict, mode: str):
-        """统一校验 key、提交任务、轮询结果。"""
+    async def _generate(
+        self, event: AstrMessageEvent, payload: dict, mode: str, prompt_hint: str = ""
+    ):
+        """统一校验 key、提交任务、轮询结果。
+
+        Args:
+            prompt_hint: 显示在"正在生成"消息里的描述文字（可为空）。
+        """
         key = config_mgr.api_key()
         if not key:
             yield event.plain_result(_NO_KEY_MSG)
@@ -51,6 +76,15 @@ class Main(Star):
         try:
             task_id = await client.submit(payload)
             logger.info(f"[suno302] {mode} 任务已提交 task_id={task_id}")
+
+            # 提交成功后才发"正在生成"消息，此时已有 task_id 可附上
+            icon = "🎹" if "纯音乐" in mode else "🎼"
+            hint_line = f"\n描述：{prompt_hint}" if prompt_hint else ""
+            yield event.plain_result(
+                f"{icon} 正在生成{mode}，请稍候（约 60~120 秒）……"
+                f"{hint_line}\n📌 task_id：{task_id}"
+            )
+
             clips = await poller.poll(task_id)
             if not clips:
                 yield event.plain_result(
@@ -72,14 +106,10 @@ class Main(Star):
     def suno(self):
         pass
 
-    # ── /suno help ────────────────────────────────────────────────────────────
-
     @suno.command("help")
     async def cmd_help(self, event: AstrMessageEvent):
         """显示帮助信息。"""
         yield event.plain_result(HELP_TEXT)
-
-    # ── /suno auto <描述> ─────────────────────────────────────────────────────
 
     @suno.command("auto")
     async def cmd_auto(self, event: AstrMessageEvent, prompt: GreedyStr):
@@ -87,15 +117,11 @@ class Main(Star):
         if not config_mgr.api_key():
             yield event.plain_result(_NO_KEY_MSG)
             return
-        yield event.plain_result(
-            f"🎼 正在生成音乐，请稍候（约 60~120 秒）……\n描述：{prompt}"
-        )
         async for r in self._generate(
-            event, build_auto(prompt, config_mgr.default_model()), "全自动"
+            event, build_auto(prompt, config_mgr.default_model()), "全自动",
+            prompt_hint=prompt,
         ):
             yield r
-
-    # ── /suno inst <描述>（别名 /suno instrumental）───────────────────────────
 
     @suno.command("inst", alias={"instrumental"})
     async def cmd_inst(self, event: AstrMessageEvent, prompt: GreedyStr):
@@ -103,17 +129,13 @@ class Main(Star):
         if not config_mgr.api_key():
             yield event.plain_result(_NO_KEY_MSG)
             return
-        yield event.plain_result(
-            f"🎹 正在生成纯音乐，请稍候（约 60~120 秒）……\n描述：{prompt}"
-        )
         async for r in self._generate(
             event,
             build_auto(prompt, config_mgr.default_model(), instrumental=True),
             "纯音乐",
+            prompt_hint=prompt,
         ):
             yield r
-
-    # ── /suno custom <标题> <风格> [男/女]（第一步）──────────────────────────
 
     @suno.command("custom")
     async def cmd_custom(
@@ -123,7 +145,7 @@ class Main(Star):
         style: str,
         gender: str = "",
     ):
-        """自定义模式第一步。用法：/suno custom <标题> <风格> [男/女]（标题和风格不能含空格）"""
+        """自定义模式第一步。用法：/suno custom <标题> <风格> [男/女]"""
         if not config_mgr.api_key():
             yield event.plain_result(_NO_KEY_MSG)
             return
@@ -144,8 +166,6 @@ class Main(Star):
             "📝 请用 /suno lyrics <歌词> 发送歌词（支持换行，一次性发完）"
         )
 
-    # ── /suno lyrics <歌词>（第二步）─────────────────────────────────────────
-
     @suno.command("lyrics")
     async def cmd_lyrics(self, event: AstrMessageEvent, lyrics: GreedyStr):
         """自定义模式第二步，发送歌词。用法：/suno lyrics <歌词>"""
@@ -153,7 +173,6 @@ class Main(Star):
             yield event.plain_result(_NO_KEY_MSG)
             return
 
-        # 将字面 \n 转为真实换行，方便用户在单行消息中表示段落
         lyrics = lyrics.replace("\\n", "\n").strip()
         if not lyrics:
             yield event.plain_result("❌ 歌词不能为空。")
@@ -169,11 +188,6 @@ class Main(Star):
         title, style, vocal_gender = pending
         gender_label = {"f": "女", "m": "男"}.get(vocal_gender, "")
 
-        yield event.plain_result(
-            f"🎼 正在生成音乐，请稍候（约 60~120 秒）……\n"
-            f"标题：{title}  风格：{style}"
-            + (f"  人声：{gender_label}" if vocal_gender else "")
-        )
         async for r in self._generate(
             event,
             build_custom(
@@ -184,33 +198,9 @@ class Main(Star):
                 vocal_gender=vocal_gender,
             ),
             "自定义",
+            prompt_hint=f"{title}  {style}" + (f"  {gender_label}声" if vocal_gender else ""),
         ):
             yield r
-
-    # ── LLM 工具（可在配置中开关）────────────────────────────────────────────────
-
-    @filter.llm_tool(name="suno_generate")
-    async def tool_generate(self, event: AstrMessageEvent, prompt: str):
-        """根据描述生成 AI 音乐，每次产出 1~2 首歌曲。仅在用户明确要求生成音乐时调用。
-
-        Args:
-            prompt(string): 歌曲描述，例如"一首轻快的夏日流行曲，女声"
-        """
-        if not config_mgr.enable_llm_tool():
-            yield event.plain_result("❌ Suno 音乐生成工具未启用，请在管理面板中开启。")
-            return
-        if not config_mgr.api_key():
-            yield event.plain_result(_NO_KEY_MSG)
-            return
-        yield event.plain_result(
-            f"🎼 正在生成音乐，请稍候（约 60~120 秒）……\n描述：{prompt}"
-        )
-        async for r in self._generate(
-            event, build_auto(prompt, config_mgr.default_model()), "全自动"
-        ):
-            yield r
-
-    # ── /suno status <task_id> ────────────────────────────────────────────────
 
     @suno.command("status")
     async def cmd_status(self, event: AstrMessageEvent, task_id: str):
