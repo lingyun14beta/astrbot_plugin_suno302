@@ -13,6 +13,18 @@ AstrBot 插件，通过 [302.AI](https://302.ai) 提供的 Suno API 实现 AI �
 | `/suno lyrics <歌词>` | 自定义模式第二步，一次性发完全部歌词 |
 | `/suno status <task_id>` | 查询任务状态及音频链接 |
 
+## LLM 工具（Function Calling）
+
+在管理面板中开启 `enable_llm_tool` 后，LLM 可通过 `suno_generate` 工具在对话中自动调用 Suno 生成音乐，无需用户手动输入指令。
+
+**支持的模式：** 全自动（AI 自动编词+配乐）
+
+**使用限制：**
+
+- **仅支持全自动模式。** 纯音乐和自定义歌词模式不作为 LLM 工具暴露，如有需要请使用对应命令。
+- **以后台任务形式运行。** 由于 Suno 生成耗时 60~120 秒，超过框架默认工具超时时间，插件采用后台任务模式执行：LLM 调用工具后立即收到提交确认和 task_id，生成完成后框架自动将结果带回对话。
+- **关闭工具调用时零影响。** `enable_llm_tool=False` 时工具完全不注册，对 LLM 不可见。
+
 ## 安装
 
 1. 将 `astrbot_plugin_suno302` 文件夹放入 AstrBot 的 `data/plugins/` 目录。
@@ -25,6 +37,7 @@ AstrBot 插件，通过 [302.AI](https://302.ai) 提供的 Suno API 实现 AI �
 |--------|------|--------|
 | `api_key` | 302.AI API Key，格式 `sk-xxxxxxxx` | 空 |
 | `default_model` | 默认 Suno 模型（下拉选择） | `chirp-crow` |
+| `enable_llm_tool` | 启用 LLM 工具调用 | `false` |
 | `poll_config.max_poll` | 最大轮询次数 | `40`（最长等待 200 秒） |
 | `poll_config.poll_interval` | 轮询间隔（秒） | `5` |
 
@@ -68,7 +81,8 @@ AstrBot 插件，通过 [302.AI](https://302.ai) 提供的 Suno API 实现 AI �
 海风轻轻吹来
 [Chorus]
 夏天的风啊带走我的烦恼
-机器人：🎼 正在生成音乐……
+机器人：🎼 正在生成自定义音乐，请稍候（约 60~120 秒）……
+        📌 task_id：xxxxxxxx
 ```
 
 **查询任务：**
@@ -79,7 +93,7 @@ AstrBot 插件，通过 [302.AI](https://302.ai) 提供的 Suno API 实现 AI �
 ## 注意事项
 
 - 每次生成产出 **1~2 首**（Suno 机制）
-- 生成耗时约 **60~120 秒**，发送命令后会先收到"正在生成"提示
+- 生成耗时约 **60~120 秒**，提交成功后会收到含 task_id 的"正在生成"提示
 - 生成结果以**音频链接**形式返回，点击链接可在浏览器播放或下载
 - 生成的文件 **14 天**后自动删除，请及时保存
 - `/suno custom` 的标题和风格**不能含空格**（AstrBot 以空格切分参数）
@@ -89,6 +103,7 @@ AstrBot 插件，通过 [302.AI](https://302.ai) 提供的 Suno API 实现 AI �
 ```
 astrbot_plugin_suno302/
 ├── main.py             # 命令路由（指令组 /suno）
+├── llm_tools.py        # LLM 工具注册与执行（与指令组解耦）
 ├── api_client.py       # HTTP 请求封装（submit / fetch），复用 ClientSession
 ├── poller.py           # 异步轮询任务状态
 ├── payload_builder.py  # 构造 API 请求体（纯函数）
